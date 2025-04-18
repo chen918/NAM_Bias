@@ -86,7 +86,6 @@ for (k in 1:itl){
   
   W =as.matrix(as_adjacency_matrix((g)))
   
-  print(grecip(W, measure="dyadic.nonnull"))
   W=t(apply( W, 1, function(x) (x/sum(x))))
   W[which(is.na( W))]=1/(node-1)
   diag(W)=0
