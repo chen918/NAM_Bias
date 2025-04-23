@@ -120,9 +120,6 @@ while(k<=itl){
   Rate<-(num-count-1)/(num-1)
   RateB<-(num-countBt-1)/(num-1)
   
-  print(Rate)
-  print(RateB)
-  
   lb=quantile(Rho[-(1:5000)],0.025)
   ub=quantile(Rho[-(1:5000)],0.975)
   lbv = c(lbv,lb)
