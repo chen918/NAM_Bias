@@ -1,0 +1,147 @@
+set.seed(99999)
+if (!require(mvtnorm)) {
+  install.packages("mvtnorm")
+  library(mvtnorm)
+}
+if (!require(invgamma)) {
+  install.packages("invgamma")
+  library(invgamma)
+}
+if (!require(sna)) {
+  install.packages("sna")
+  library(sna)
+}
+if (!require(coda)) {
+  install.packages("coda")
+  library(coda)
+}
+if (!require(truncnorm)) {
+  install.packages("truncnorm")
+  library(truncnorm)
+}
+
+#para: 1,2,3,4
+para=1
+
+#network size and corresponding density
+vec1=c(60,100,140,200)
+vec2=c(0.129,0.077,0.055,0.038)
+
+ddensity=vec2[para]
+
+#True value of rho:-0.5,-0.2,0,0.2,0.5
+rho=-0.5
+
+node=vec1[para]
+
+itl=500
+
+medianRho_v = c()
+coverage = 0
+ubv = c()
+lbv = c()
+
+k=1
+
+while(k<=itl){
+  
+  Exp = rpois(node,1)+1
+  Off = log(Exp)
+  
+  X=cbind(1,matrix(rnorm(node*3),ncol=3))
+  BBeta=matrix(c(-0.1,0.1,0.2,0.3),nrow =4)
+  
+  W=rgraph(node, m=1, tprob=ddensity, mode="graph", diag = F, replace=FALSE,
+           tielist=NULL, return.as.edgelist= F )
+  
+  W=t(apply(W, 1, function(x) (x/sum(x))))
+  
+  W[which(is.na(W))]=1/(node-1)
+  
+  diag(W)<-0
+  
+  Mu= exp(solve(diag(x=1,nrow=node)-rho*W)%*%(X%*%BBeta)+Off)
+  
+  Y=rpois(n=node, lambda=Mu)
+  
+  Lamda = eigen(W)$values
+  
+  Lamda = Re(Lamda)
+  
+  ######
+  #MCMC
+  num=50000
+  Rho = rep(0, num)
+  
+  betamt = matrix(0, 4, num)
+  
+  Rho[1]=rho
+  betamt[,1]=BBeta
+  ####
+  I = t(rep(1,node))
+  V = solve(t(X)%*%t(solve(diag(1,node)-rho*W))%*%diag(c(exp(solve(diag(1,node)-rho*W)%*%X%*%BBeta+Off)))%*%solve(diag(1,node)-rho*W)%*%X)
+  count = 0
+  countBt = 0
+  i = 2
+  while(i<=num){
+    Rho[i] = Rho[i-1]+rnorm(1, mean = 0, sd = 20)
+    
+    if (Rho[i]>1/max(Lamda) | Rho[i]< 1/min(Lamda)){
+      next
+    }
+    
+    proportion = exp((t(Y)%*%(solve(diag(1,node)-Rho[i]*W)%*%X%*%betamt[,i-1]+Off)-I%*%exp(solve(diag(1,node)-Rho[i]*W)%*%X%*%betamt[,i-1]+Off))-
+                       (t(Y)%*%(solve(diag(1,node)-Rho[i-1]*W)%*%X%*%betamt[,i-1]+Off)-I%*%exp(solve(diag(1,node)-Rho[i-1]*W)%*%X%*%betamt[,i-1]+Off)))*
+      dtruncnorm(Rho[i-1], a=1/min(Lamda), b=1/max(Lamda), mean=Rho[i],sd=20)/dtruncnorm(Rho[i], a=1/min(Lamda), b=1/max(Lamda), mean=Rho[i-1],sd=20)
+    
+    proportion = min(1, Re(proportion))
+    
+    if (runif(1) > proportion){
+      Rho[i]=Rho[i-1]
+      count = count+1
+    }
+    
+    betamt[,i] = betamt[,i-1]+rmvnorm(1, mean = rep(0,4), sigma=2.5*V)
+    
+    proportionbeta = exp((t(Y)%*%(solve(diag(1,node)-Rho[i]*W)%*%X%*%betamt[,i]+Off)-I%*%exp(solve(diag(1,node)-Rho[i]*W)%*%X%*%betamt[,i]+Off))-
+                           (t(Y)%*%(solve(diag(1,node)-Rho[i]*W)%*%X%*%betamt[,i-1]+Off)-I%*%exp(solve(diag(1,node)-Rho[i]*W)%*%X%*%betamt[,i-1]+Off)))
+    
+    proportionbeta = min(1, Re(proportionbeta))
+    
+    if (runif(1) > proportionbeta){
+      betamt[,i]=betamt[,i-1]
+      countBt = countBt+1
+    }
+    
+    i = i+1
+    
+  }
+  
+  
+  medianRho_v[k] = median(Rho[-(1:5000)])
+  
+  
+  Rate<-(num-count-1)/(num-1)
+  RateB<-(num-countBt-1)/(num-1)
+  
+  lb=quantile(Rho[-(1:5000)],0.025)
+  ub=quantile(Rho[-(1:5000)],0.975)
+  lbv = c(lbv,lb)
+  ubv = c(ubv,ub)
+  if(rho<=ub & rho>=lb){
+    coverage=coverage+1
+  }
+  
+  cat("k = ", k,"\n")
+  
+  k = k + 1
+  
+}
+
+res = c(vec1[para],
+        vec2[para],
+        rho,
+        mean(medianRho_v)-rho,
+        sum((medianRho_v-rho)^2)/itl,
+        coverage/itl)
+
