@@ -26,10 +26,10 @@ if (!require(tmvtnorm)) {
 }
 library(igraph)
 
-
-
-reciprocity_level <- as.numeric(Args[1])
-rho=as.numeric(Args[2])
+#reciprocity_level: 0.1,0.3,0.5,0.7,0.9
+reciprocity_level <- 0.1
+#True value of rho:-0.5,-0.2,0,0.2,0.5
+rho=-0.5
 
 itl=500
 
