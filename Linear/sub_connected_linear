@@ -1,0 +1,169 @@
+set.seed(99999)
+if (!require(mvtnorm)) {
+  install.packages("mvtnorm")
+  library(mvtnorm)
+}
+if (!require(invgamma)) {
+  install.packages("invgamma")
+  library(invgamma)
+}
+if (!require(sna)) {
+  install.packages("sna")
+  library(sna)
+}
+if (!require(truncnorm)) {
+  install.packages("truncnorm")
+  library(truncnorm)
+}
+if (!require(coda)) {
+  install.packages("coda")
+  library(coda)
+}
+
+# between sub-network density 0.05 or 0.1
+btw_den=0.05
+
+#number of sub-networks
+nsub=3
+
+itl=500
+
+size = rep(20, nsub)
+
+#true value of rho
+rho=-0.5 
+p = rep(0.4, nsub)
+
+c_node = nsub
+node_full=sum(size)
+
+
+medianRho_v = c()
+coverage = 0
+ubv = c()
+lbv = c()
+
+
+for (k in 1:itl){
+  
+  ################
+  
+  W_full = matrix(NA,nrow = node_full, ncol = node_full)
+  
+  for(wi in 1:c_node){
+    idx1 = 1+sum(size[1:wi])-size[wi]
+    idx2 = sum(size[1:wi])
+    W_full[idx1:idx2,idx1:idx2] = rgraph(size[wi], m=1, tprob=p[wi], mode="graph", diag = F, replace=FALSE,tielist=NULL, return.as.edgelist= F )
+  }
+  
+  idxsample=function(m,n){
+    idx=which(is.na(m),F) # Index of positions of NA's in the matrix
+    pos=sample(idx,n,replace=F) # Random n sample of matrix indexes
+    return(pos)
+  }
+  
+  W_full[lower.tri(W_full)] = 0
+  
+  #This call will sample and store n "positions" with value==NA in your matrix
+  pos=idxsample( W_full,n=(20*nsub)*(20*nsub-1)*btw_den/2)
+  
+  W_full[pos] = 1
+  
+  W_full[is.na(W_full)] = 0
+  
+  W_full[lower.tri(W_full)]<-t(W_full)[lower.tri(W_full)] 
+  
+  
+  ################
+  
+  X_full=cbind(1,matrix(rnorm(node_full*3),ncol=3))
+  BBeta=matrix(c(-0.1,0.1,0.2,0.3),nrow =4)
+  oomega=1
+  Tao_full=matrix(rnorm(node_full, mean = 0, sd = sqrt(oomega)),ncol = 1)
+  Rho_m = c()
+  
+  ##################
+  
+  W = W_full
+  X = X_full
+  Tao = Tao_full
+  node = node_full
+  
+  W=t(apply( W, 1, function(x) (x/sum(x))))
+  W[which(is.na( W))]=1/(node-1)
+  diag(W)=0
+  
+  DDelta= solve(diag(x=1,nrow=node)-rho*W)%*%(X%*%BBeta+Tao)
+  
+  # ordered eigenvalues of W
+  Lamda = c(sort(eigen(W)$values, decreasing = T))
+  Lamda = Re(Lamda)
+  
+  
+  ######
+  #MCMC
+  num=10000
+  Rho = rep(0, num)
+  omega = rep(0, num)
+  betamt = matrix(0, 4, num)
+  
+  Rho[1]=rho
+  omega[1]=oomega
+  betamt[,1]=BBeta
+  ####
+  count = 0
+  i = 2
+  while(i<=num){
+    
+    Rho[i]=rtruncnorm(1, a=1/min(Lamda), b=1/max(Lamda), mean=(t(DDelta)%*%t(W)%*%(DDelta-X%*%betamt[,i-1]))/(omega[i-1]*sum(Lamda^2)+t(DDelta)%*%t(W)%*%W%*%DDelta),
+                      sd=sqrt(omega[i-1]/(omega[i-1]*sum(Lamda^2)+t(DDelta)%*%t(W)%*%W%*%DDelta))
+    )
+    
+    proportion = abs(det(diag(1,node)-Rho[i]*W)/det(diag(1,node)-Rho[i-1]*W))*exp(
+      -1/(2*omega[i-1])*t((diag(1,node)-Rho[i]*W)%*%DDelta-X%*%betamt[,i-1])%*%((diag(1,node)-Rho[i]*W)%*%DDelta-X%*%betamt[,i-1])+
+        1/(2*omega[i-1])*t((diag(1,node)-Rho[i-1]*W)%*%DDelta-X%*%betamt[,i-1])%*%((diag(1,node)-Rho[i-1]*W)%*%DDelta-X%*%betamt[,i-1])
+      -1/2*((Rho[i-1]-(t(DDelta)%*%t(W)%*%(DDelta-X%*%betamt[,i-1]))/(omega[i-1]*sum(Lamda^2)+t(DDelta)%*%t(W)%*%W%*%DDelta))^2/(omega[i-1]/(omega[i-1]*sum(Lamda^2)+t(DDelta)%*%t(W)%*%W%*%DDelta)))+
+        1/2*((Rho[i]-(t(DDelta)%*%t(W)%*%(DDelta-X%*%betamt[,i-1]))/(omega[i-1]*sum(Lamda^2)+t(DDelta)%*%t(W)%*%W%*%DDelta))^2/(omega[i-1]/(omega[i-1]*sum(Lamda^2)+t(DDelta)%*%t(W)%*%W%*%DDelta)))
+    )
+    
+    proportion = min(1, Re(proportion))
+    
+    if (runif(1) > proportion){
+      Rho[i]=Rho[i-1]
+      count = count+1
+    }
+    
+    omega[i] = rinvgamma(n=1, shape = (node-1)/2, rate = t((diag(1,node)-Rho[i]*W)%*%DDelta-X%*%betamt[,i-1])%*%((diag(1,node)-Rho[i]*W)%*%DDelta-X%*%betamt[,i-1])/2
+    )
+    
+    betamt[,i] = rmvnorm(1, mean = solve(t(X)%*%X)%*%t(X)%*%(diag(1,node)-Rho[i]*W)%*%DDelta,
+                         sigma = solve(t(X)%*%X)*omega[i])
+    
+    i = i+1
+    
+  }
+  
+  medianRho_v[k] = median(Rho[-(1:1000)])
+  
+  lb=quantile(Rho[-(1:1000)],0.025)
+  ub=quantile(Rho[-(1:1000)],0.975)
+  lbv = c(lbv,lb)
+  ubv = c(ubv,ub)
+  
+  if(rho<=ub & rho>=lb){
+    coverage=coverage+1
+  }
+  
+  cat("k = ", k,"\n")
+  
+}
+
+
+res = c(nsub,
+        rho,
+        mean(medianRho_v)-rho,
+        sum((medianRho_v-rho)^2)/itl,
+        coverage/itl)
+
+
+
