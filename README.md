@@ -1,4 +1,4 @@
-This file contains several R scripts for the simulation study of the paper "Influence of Network Structures on Bayesian Estimation of Peer Effects and Statistical Power for Linear and Generalized Linear Network Autocorrelation Models". Each script forms the standalone file with data generation and model estimation using Bayesian approach.
+This file contains several R scripts for the simulation study of the paper "Influence of Multiple Network Structures on Bayesian Estimation of Peer Effects and Statistical Power for Generalized Linear Network Autocorrelation Models". Each script forms the standalone file with data generation and model estimation using Bayesian approach.
 The R scripts heading with "sub_" are for the analysis of the impact of the number of independent sub-networks on estimating rho.
 The R scripts heading with "sub_connected" are for the analysis of the impact of the number of limited connected sub-networks on estimating rho.
 The R scripts heading with "wt_" are for the analysis of the impact of the variation of the edge weights across the weighted network on estimating rho.
